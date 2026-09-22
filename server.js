@@ -274,7 +274,12 @@ async function pedirNombre(telefono, tenant) {
 }
 
 async function pedirLocal(telefono, tenant) {
-  const botones = tenant.locales.map(l => ({ id: l.id, title: `📍 ${l.nombre}` }));
+  const botones = tenant.locales.map(l => ({
+    id: l.id,
+    title: l.nombre
+      .replace('Madrugada Beniaján', 'Beniaján')
+      .replace('Madrugada Vistabella', 'Vistabella')
+  }));
   await enviarOpciones(telefono, tenant, '🏪 ¿En qué local quieres recoger tu pedido?', botones);
 }
 
