@@ -279,11 +279,13 @@ async function pedirLocal(telefono, tenant) {
 }
 
 async function pedirFecha(telefono, tenant) {
-  const rows = diasDisponibles().map(d => ({
-    id: d,
-    title: formatFecha(d).charAt(0).toUpperCase() + formatFecha(d).slice(1),
-    description: d,
-  }));
+  const rows = diasDisponibles().map(d => {
+    const fecha = new Date(d + 'T12:00:00');
+    const titulo = fecha.toLocaleDateString('es-ES', {
+      weekday: 'short', day: 'numeric', month: 'short'
+    }).slice(0, 24);
+    return { id: d, title: titulo, description: d };
+  });
   await enviarLista(telefono, tenant, '📅 ¿Qué día quieres recoger?', 'Ver días',
     [{ title: 'Días disponibles', rows }]);
 }
