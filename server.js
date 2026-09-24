@@ -629,6 +629,54 @@ async function enviarLista(tel, tenant, texto, botonTexto, secciones) {
     action:{ button:botonTexto, sections:secciones },
   }});
 }
+// ============================================================
+// ENDPOINT: Crear cliente desde panel master
+// ============================================================
+app.post('/admin/crear-cliente', express.json(), async (req, res) => {
+  const { nombre, telefono, phone_id, token, email, pass, bienvenida } = req.body;
+  const authHeader = req.headers['authorization'];
 
+  // Verificar token master simple
+  if (authHeader !== `Bearer ${process.env.MASTER_SECRET}`) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+
+  try {
+    // 1. Crear tenant
+    const { data: tenant, error: tErr } = await supabase.from('tenants').insert({
+      nombre, telefono_negocio: telefono,
+      whatsapp_phone_id: phone_id || 'PENDIENTE',
+      whatsapp_token: token || 'PENDIENTE',
+      mensaje_bienvenida: bienvenida || `¡Bienvenido/a a *${nombre}*!`,
+      pago_online_activo: false, recordatorios_activos: false,
+    }).select().single();
+    if (tErr) throw tErr;
+
+    // 2. Crear usuario en Supabase Auth
+    const authRes = await fetch(`${process.env.SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: {
+        'apikey': process.env.SUPABASE_SERVICE_KEY,
+        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password: pass, email_confirm: true }),
+    });
+    const authData = await authRes.json();
+    if (!authRes.ok) throw new Error(authData.message || 'Error creando usuario');
+
+    // 3. Vincular usuario con tenant
+    const { error: linkErr } = await supabase.from('tenant_users').insert({
+      user_id: authData.id, tenant_id: tenant.id, role: 'admin',
+    });
+    if (linkErr) throw linkErr;
+
+    res.json({ ok: true, tenant_id: tenant.id, user_id: authData.id });
+
+  } catch (err) {
+    console.error('Error crear-cliente:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 // ============================================================
 app.listen(PORT, () => console.log(`🚀 OrderBot v6 corriendo en :${PORT}`));
