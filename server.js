@@ -639,7 +639,7 @@ async function enviarLista(tel, tenant, texto, botonTexto, secciones) {
 // ============================================================
 // ENDPOINT: Crear cliente desde panel master
 // ============================================================
-app.post('/admin/crear-cliente', express.json(), async (req, res) => {
+app.post('/admin/crear-cliente', async (req, res) => {
   const { nombre, telefono, phone_id, token, email, pass, bienvenida } = req.body;
   const authHeader = req.headers['authorization'];
 
