@@ -315,6 +315,11 @@ async function mostrarCatalogo(telefono, tenant, s) {
     'Ver catálogo',
     [{ title: 'Productos disponibles', rows }]
   );
+  // Link web como alternativa (solo primera vez)
+  if (s.carrito.length === 0) {
+    await enviarTexto(telefono, tenant,
+      `\u{1F4A1} _\u00bfPrefieres hacer el pedido desde la web? M\u00e1s r\u00e1pido si tienes varios productos:_\n\u{1F449} ${BOT_BASE_URL}/pedido/${tenantSlug(tenant.nombre)}`);
+  }
   s.paso = 'eligiendo_producto';
 }
 
@@ -732,7 +737,7 @@ app.post('/pedido/:slug/confirmar', async (req, res) => {
       },
     });
 
-    res.json({ ok: true, numStr });
+    res.json({ ok: true, numStr, telefono_negocio: tenant.telefono_negocio, tenant_nombre: tenant.nombre });
   } catch(err) {
     console.error('Error pedido web:', err);
     res.status(500).json({ error: err.message });
@@ -960,6 +965,14 @@ async function confirmarPedido() {
     if (!res.ok) throw new Error(data.error);
 
     document.getElementById('success-num').textContent = '#'+data.numStr;
+    // Redirigir a WhatsApp con el resumen
+    const telNegocio = data.telefono_negocio || '';
+    const msg = encodeURIComponent(
+      '✅ Acabo de confirmar mi pedido #' + data.numStr + ' desde la web de ' + data.tenant_nombre + '. ¡Hasta pronto! 🥐'
+    );
+    setTimeout(() => {
+      window.location.href = 'https://wa.me/' + telNegocio + '?text=' + msg;
+    }, 1500);
     document.getElementById('screen-pedido').classList.remove('active');
     document.getElementById('screen-success').classList.add('active');
     window.scrollTo(0,0);
