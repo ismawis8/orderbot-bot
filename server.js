@@ -9,13 +9,6 @@ import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 app.use(express.json());
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
 
 const {
   WEBHOOK_VERIFY_TOKEN,
@@ -156,6 +149,7 @@ async function procesarMensaje(telefono, contactName, msg, tenant) {
   console.log(`[${telefono}] paso=${s.paso} | "${entrada.slice(0,40)}"`);
 
   switch (s.paso) {
+
 
     case 'inicio':
       await enviarTexto(telefono, tenant,
@@ -636,54 +630,346 @@ async function enviarLista(tel, tenant, texto, botonTexto, secciones) {
     action:{ button:botonTexto, sections:secciones },
   }});
 }
-// ============================================================
-// ENDPOINT: Crear cliente desde panel master
-// ============================================================
-app.post('/admin/crear-cliente', async (req, res) => {
-  const { nombre, telefono, phone_id, token, email, pass, bienvenida } = req.body;
-  const authHeader = req.headers['authorization'];
 
-  // Verificar token master simple
-  if (authHeader !== `Bearer ${process.env.MASTER_SECRET}`) {
-    return res.status(401).json({ error: 'No autorizado' });
-  }
+// ============================================================
+app.listen(PORT, () => console.log(`🚀 OrderBot v6 corriendo en :${PORT}`));
+
+// ============================================================
+// WEB DE PEDIDO — /pedido/:slug
+// ============================================================
+
+// Añadir slug a tenants (usamos el nombre en minúsculas sin espacios)
+function tenantSlug(nombre) {
+  return nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
+// Endpoint: sirve la web de pedido
+app.get('/pedido/:slug', async (req, res) => {
+  const slug = req.params.slug;
+
+  // Buscar tenant por slug (nombre normalizado)
+  const { data: tenants } = await supabase.from('tenants').select('*, locales(*), productos(*)').eq('activo', true);
+  const tenant = tenants?.find(t => tenantSlug(t.nombre) === slug);
+
+  if (!tenant) return res.status(404).send('<h2>Negocio no encontrado</h2>');
+
+  // Preparar datos
+  const productos = (tenant.productos || []).filter(p => p.disponible).sort((a,b) => a.orden - b.orden);
+  const locales   = (tenant.locales   || []).filter(l => l.activo).sort((a,b) => a.orden - b.orden);
+
+  const html = generarWebPedido(tenant, productos, locales);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
+// Endpoint: recibir pedido desde la web
+app.post('/pedido/:slug/confirmar', async (req, res) => {
+  const slug = req.params.slug;
+  const { nombre, telefono, local, fecha, hora, observaciones, carrito } = req.body;
+
+  const { data: tenants } = await supabase.from('tenants').select('*').eq('activo', true);
+  const tenant = tenants?.find(t => tenantSlug(t.nombre) === slug);
+  if (!tenant) return res.status(404).json({ error: 'Negocio no encontrado' });
+
+  const { data: locales } = await supabase.from('locales').select('*').eq('tenant_id', tenant.id);
+  const localObj = locales?.find(l => l.id === local);
 
   try {
-    // 1. Crear tenant
-    const { data: tenant, error: tErr } = await supabase.from('tenants').insert({
-      nombre, telefono_negocio: telefono,
-      whatsapp_phone_id: phone_id || 'PENDIENTE',
-      whatsapp_token: token || 'PENDIENTE',
-      mensaje_bienvenida: bienvenida || `¡Bienvenido/a a *${nombre}*!`,
-      pago_online_activo: false, recordatorios_activos: false,
+    const { data: num } = await supabase.rpc('siguiente_numero_pedido', { p_tenant_id: tenant.id });
+    const total = carrito.reduce((s, l) => s + l.precio * l.cantidad, 0);
+
+    const { data: pedido, error } = await supabase.from('pedidos').insert({
+      tenant_id:        tenant.id,
+      local_id:         local,
+      local_nombre:     localObj?.nombre || local,
+      numero_pedido:    num,
+      cliente_nombre:   nombre,
+      cliente_telefono: telefono,
+      fecha_recogida:   fecha,
+      hora_recogida:    hora + ':00',
+      observaciones:    observaciones || null,
+      estado:           'confirmado',
+      origen:           'web',
+      pago_metodo:      'local',
+      pagado:           false,
+      total,
+      whatsapp_session_id: telefono,
     }).select().single();
-    if (tErr) throw tErr;
 
-    // 2. Crear usuario en Supabase Auth
-    const authRes = await fetch(`${process.env.SUPABASE_URL}/auth/v1/admin/users`, {
-      method: 'POST',
-      headers: {
-        'apikey': process.env.SUPABASE_SERVICE_KEY,
-        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
-        'Content-Type': 'application/json',
+    if (error) throw error;
+
+    await supabase.from('pedido_lineas').insert(
+      carrito.map(l => ({
+        pedido_id: pedido.id,
+        producto_id: l.id,
+        producto_nombre: l.nombre,
+        producto_precio: l.precio,
+        cantidad: l.cantidad,
+      }))
+    );
+
+    const numStr = String(num).padStart(4, '0');
+
+    // Notificación WhatsApp al cliente
+    const lineasTxt = carrito.map(l => `• ${l.cantidad}× ${l.nombre}`).join('\n');
+    await whatsappSend(tenant, {
+      to: telefono, type: 'text', text: { body:
+        `🎉 *¡Pedido #${numStr} confirmado!*\n\n` +
+        `${lineasTxt}\n💰 Total: ${total.toFixed(2)}€\n\n` +
+        `📍 ${localObj?.nombre || local}\n` +
+        `📅 ${new Date(fecha+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})} a las ${hora}h\n\n` +
+        `¡Gracias y hasta pronto! 🥐`,
       },
-      body: JSON.stringify({ email, password: pass, email_confirm: true }),
     });
-    const authData = await authRes.json();
-    if (!authRes.ok) throw new Error(authData.message || 'Error creando usuario');
 
-    // 3. Vincular usuario con tenant
-    const { error: linkErr } = await supabase.from('tenant_users').insert({
-      user_id: authData.id, tenant_id: tenant.id, role: 'admin',
+    // Notificación a la tienda
+    await whatsappSend(tenant, {
+      to: tenant.telefono_negocio, type: 'text', text: { body:
+        `🔔 *NUEVO PEDIDO #${numStr}* (Web)\n\n` +
+        `👤 ${nombre} · 📞 ${telefono}\n\n${lineasTxt}\n` +
+        `💰 ${total.toFixed(2)}€\n📍 ${localObj?.nombre || local}\n` +
+        `📅 ${fecha} ${hora}h`,
+      },
     });
-    if (linkErr) throw linkErr;
 
-    res.json({ ok: true, tenant_id: tenant.id, user_id: authData.id });
-
-  } catch (err) {
-    console.error('Error crear-cliente:', err);
+    res.json({ ok: true, numStr });
+  } catch(err) {
+    console.error('Error pedido web:', err);
     res.status(500).json({ error: err.message });
   }
 });
-// ============================================================
-app.listen(PORT, () => console.log(`🚀 OrderBot v6 corriendo en :${PORT}`));
+
+function generarWebPedido(tenant, productos, locales) {
+  const hoy = new Date().toISOString().split('T')[0];
+  const productosJson = JSON.stringify(productos.map(p => ({
+    id: p.id, nombre: p.nombre, descripcion: p.descripcion,
+    precio: p.precio, imagen_url: p.imagen_url,
+  })));
+  const localesJson = JSON.stringify(locales.map(l => ({ id: l.id, nombre: l.nombre })));
+  const slug = tenantSlug(tenant.nombre);
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Pedido — ${tenant.nombre}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:system-ui,sans-serif;background:#f4f4f6;min-height:100vh;padding-bottom:100px;}
+.header{background:#0f172a;color:#fff;padding:16px 20px;position:sticky;top:0;z-index:100;}
+.header-inner{display:flex;align-items:center;gap:10px;max-width:480px;margin:0 auto;}
+.logo{font-size:20px;font-weight:800;letter-spacing:-1px;}
+.logo span{font-weight:300;}
+.tenant-name{font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;}
+.content{max-width:480px;margin:0 auto;padding:16px;}
+.section{background:#fff;border-radius:12px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+.section-title{padding:14px 16px;font-size:13px;font-weight:700;color:#555;border-bottom:1px solid #f0f0f0;text-transform:uppercase;letter-spacing:.04em;}
+.prod-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;}
+.prod-row:last-child{border:none;}
+.prod-img{width:52px;height:52px;border-radius:8px;object-fit:cover;background:#f0f0f0;flex-shrink:0;}
+.prod-img-ph{width:52px;height:52px;border-radius:8px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.prod-info{flex:1;min-width:0;}
+.prod-nombre{font-size:14px;font-weight:700;color:#111;}
+.prod-desc{font-size:11px;color:#999;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prod-precio{font-size:14px;font-weight:800;color:#1FB86A;margin-top:3px;}
+.stepper{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.stepper button{width:30px;height:30px;border-radius:50%;border:none;background:#f0f0f0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333;}
+.stepper button.active{background:#1FB86A;color:#fff;}
+.stepper span{font-size:15px;font-weight:700;width:20px;text-align:center;}
+.field{padding:12px 16px;border-bottom:1px solid #f5f5f5;}
+.field:last-child{border:none;}
+.field label{display:block;font-size:11px;font-weight:700;color:#999;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;}
+.field input,.field select,.field textarea{width:100%;border:none;outline:none;font-size:15px;font-family:inherit;color:#111;background:transparent;}
+.field textarea{resize:none;height:56px;}
+.carrito-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));}
+.carrito-inner{max-width:480px;margin:0 auto;display:flex;align-items:center;gap:12px;}
+.carrito-info{flex:1;}
+.carrito-total{font-size:18px;font-weight:800;color:#111;}
+.carrito-items{font-size:12px;color:#999;}
+.btn-confirmar{padding:14px 24px;background:#1FB86A;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;}
+.btn-confirmar:disabled{background:#ccc;cursor:not-allowed;}
+.screen{display:none;} .screen.active{display:block;}
+.success{text-align:center;padding:60px 20px;}
+.success-icon{font-size:64px;margin-bottom:16px;}
+.success h2{font-size:22px;font-weight:800;color:#111;margin-bottom:8px;}
+.success p{color:#666;font-size:14px;line-height:1.6;}
+.success .num{font-size:28px;font-weight:800;color:#1FB86A;margin:12px 0;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div>
+      <div class="logo"><span>Pedi</span>d<svg width="20" height="20" viewBox="0 0 120 120" style="display:inline-block;vertical-align:-0.07em;margin:0 1px"><circle cx="60" cy="56" r="52" fill="#1FB86A"/><path d="M22 88 L14 116 L48 104 Z" fill="#1FB86A"/><g transform="translate(4,-1)" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M28 60 L40 72 L66 42"/><path d="M53 67 L58 72 L84 42"/></g></svg>ne</div>
+      <div class="tenant-name">${tenant.nombre}</div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-pedido" class="screen active">
+  <div class="content">
+
+    <!-- Productos -->
+    <div class="section">
+      <div class="section-title">🛒 Selecciona tus productos</div>
+      <div id="productos-lista"></div>
+    </div>
+
+    <!-- Datos -->
+    <div class="section">
+      <div class="section-title">👤 Tus datos</div>
+      <div class="field">
+        <label>Nombre completo *</label>
+        <input id="nombre" type="text" placeholder="Tu nombre" autocomplete="name"/>
+      </div>
+      <div class="field">
+        <label>Teléfono WhatsApp * <span style="font-weight:400;text-transform:none">(recibirás confirmación)</span></label>
+        <input id="telefono" type="tel" placeholder="34612345678" autocomplete="tel"/>
+      </div>
+    </div>
+
+    <!-- Recogida -->
+    <div class="section">
+      <div class="section-title">📅 Recogida</div>
+      ${locales.length > 1 ? `
+      <div class="field">
+        <label>Local *</label>
+        <select id="local">${locales.map(l => `<option value="${l.id}">${l.nombre}</option>`).join('')}</select>
+      </div>` : `<input type="hidden" id="local" value="${locales[0]?.id || ''}"/>`}
+      <div class="field">
+        <label>Fecha *</label>
+        <input id="fecha" type="date" min="${hoy}"/>
+      </div>
+      <div class="field">
+        <label>Hora *</label>
+        <input id="hora" type="time" min="07:00" max="20:30" step="1800"/>
+      </div>
+      <div class="field">
+        <label>Observaciones <span style="font-weight:400;text-transform:none">(opcional)</span></label>
+        <textarea id="obs" placeholder="Alergias, instrucciones especiales..."></textarea>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Barra inferior -->
+  <div class="carrito-bar">
+    <div class="carrito-inner">
+      <div class="carrito-info">
+        <div class="carrito-total" id="total-display">0,00€</div>
+        <div class="carrito-items" id="items-display">Sin productos</div>
+      </div>
+      <button class="btn-confirmar" id="btn-confirmar" disabled onclick="confirmarPedido()">
+        Confirmar →
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="screen-success" class="screen">
+  <div class="content">
+    <div class="success">
+      <div class="success-icon">🎉</div>
+      <h2>¡Pedido confirmado!</h2>
+      <div class="num" id="success-num">#0000</div>
+      <p>Te hemos enviado la confirmación por WhatsApp.<br/>¡Te esperamos en <strong>${tenant.nombre}</strong>!</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const PRODUCTOS = ${productosJson};
+const SLUG = '${slug}';
+let cantidades = {};
+
+// Render productos
+const lista = document.getElementById('productos-lista');
+PRODUCTOS.forEach(p => {
+  cantidades[p.id] = 0;
+  const div = document.createElement('div');
+  div.className = 'prod-row';
+  div.id = 'prod-'+p.id;
+  div.innerHTML = \`
+    \${p.imagen_url
+      ? \`<img class="prod-img" src="\${p.imagen_url}" alt="\${p.nombre}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+         <div class="prod-img-ph" style="display:none">📦</div>\`
+      : \`<div class="prod-img-ph">📦</div>\`}
+    <div class="prod-info">
+      <div class="prod-nombre">\${p.nombre}</div>
+      \${p.descripcion ? \`<div class="prod-desc">\${p.descripcion}</div>\` : ''}
+      <div class="prod-precio">\${p.precio.toFixed(2).replace('.',',')}€</div>
+    </div>
+    <div class="stepper">
+      <button onclick="cambiar('\${p.id}',-1)">−</button>
+      <span id="qty-\${p.id}">0</span>
+      <button class="active" onclick="cambiar('\${p.id}',1)">+</button>
+    </div>
+  \`;
+  lista.appendChild(div);
+});
+
+function cambiar(id, delta) {
+  cantidades[id] = Math.max(0, (cantidades[id]||0) + delta);
+  document.getElementById('qty-'+id).textContent = cantidades[id];
+  actualizarTotal();
+}
+
+function actualizarTotal() {
+  let total = 0, items = 0;
+  PRODUCTOS.forEach(p => {
+    total += p.precio * (cantidades[p.id]||0);
+    items += cantidades[p.id]||0;
+  });
+  document.getElementById('total-display').textContent = total.toFixed(2).replace('.',',')+'€';
+  document.getElementById('items-display').textContent = items===0 ? 'Sin productos' : items+' producto'+(items===1?'':'s');
+  document.getElementById('btn-confirmar').disabled = items === 0;
+}
+
+async function confirmarPedido() {
+  const nombre   = document.getElementById('nombre').value.trim();
+  const telefono = document.getElementById('telefono').value.trim().replace(/\\D/g,'');
+  const local    = document.getElementById('local').value;
+  const fecha    = document.getElementById('fecha').value;
+  const hora     = document.getElementById('hora').value;
+  const obs      = document.getElementById('obs').value.trim();
+
+  if (!nombre)         { alert('Introduce tu nombre'); return; }
+  if (!telefono || telefono.length < 9) { alert('Introduce un teléfono válido'); return; }
+  if (!fecha)          { alert('Selecciona la fecha de recogida'); return; }
+  if (!hora)           { alert('Selecciona la hora de recogida'); return; }
+
+  const carrito = PRODUCTOS
+    .filter(p => cantidades[p.id] > 0)
+    .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precio, cantidad: cantidades[p.id] }));
+
+  if (!carrito.length) { alert('Añade al menos un producto'); return; }
+
+  const btn = document.getElementById('btn-confirmar');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  try {
+    const res = await fetch('/pedido/'+SLUG+'/confirmar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, telefono, local, fecha, hora, observaciones: obs, carrito }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('success-num').textContent = '#'+data.numStr;
+    document.getElementById('screen-pedido').classList.remove('active');
+    document.getElementById('screen-success').classList.add('active');
+    window.scrollTo(0,0);
+  } catch(err) {
+    alert('Error: '+err.message);
+    btn.disabled = false;
+    btn.textContent = 'Confirmar →';
+  }
+}
+</script>
+</body>
+</html>`;
+}
