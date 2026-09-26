@@ -737,7 +737,7 @@ app.post('/pedido/:slug/confirmar', async (req, res) => {
       },
     });
 
-    res.json({ ok: true, numStr, telefono_negocio: tenant.telefono_negocio, tenant_nombre: tenant.nombre });
+    const fechaLegible = new Date(fecha+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}); const lineasResumen = carrito.map(l => ({ nombre: l.nombre, cantidad: l.cantidad, subtotal: l.precio * l.cantidad })); res.json({    ok: true, numStr,    telefono_negocio: tenant.telefono_negocio,    tenant_nombre: tenant.nombre,   local_nombre: localObj?.nombre || local,   fecha_legible: fechaLegible,   hora,   total,   lineas: lineasResumen, });
   } catch(err) {
     console.error('Error pedido web:', err);
     res.status(500).json({ error: err.message });
@@ -941,7 +941,7 @@ async function confirmarPedido() {
   const obs      = document.getElementById('obs').value.trim();
 
   if (!nombre)         { alert('Introduce tu nombre'); return; }
-  if (!telefono || telefono.length < 9) { alert('Introduce un teléfono válido'); return; }
+  // Añadir prefijo 34 automáticamente si no lo tienen let telFinal = telefono.replace(/\D/g,''); if (telFinal.startsWith('6') || telFinal.startsWith('7') || telFinal.startsWith('9')) {   telFinal = '34' + telFinal; } if (telFinal.length < 11) { alert('Introduce un teléfono válido'); return; }
   if (!fecha)          { alert('Selecciona la fecha de recogida'); return; }
   if (!hora)           { alert('Selecciona la hora de recogida'); return; }
 
