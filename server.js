@@ -1041,7 +1041,7 @@ async function confirmarPedido() {
       +'%C2%A1Hasta pronto! %F0%9F%A5%90';
 
     setTimeout(() => {
-      window.location.href = 'https://wa.me/'+data.telefono_negocio+'?text='+msg;
+      window.location.href = 'https://wa.me/'+tel+'?text='+msg;
     }, 1500);
 
   } catch(err) {
