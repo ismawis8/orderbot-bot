@@ -965,10 +965,16 @@ async function confirmarPedido() {
     if (!res.ok) throw new Error(data.error);
 
     document.getElementById('success-num').textContent = '#'+data.numStr;
-    // Redirigir a WhatsApp con el resumen
+    // Redirigir a WhatsApp con el resumen completo
     const telNegocio = data.telefono_negocio || '';
+    const lineasTxt = (data.lineas||[]).map(l => '• '+l.cantidad+'× '+l.nombre+' — '+parseFloat(l.subtotal).toFixed(2)+'€').join('\n');
     const msg = encodeURIComponent(
-      '✅ Acabo de confirmar mi pedido #' + data.numStr + ' desde la web de ' + data.tenant_nombre + '. ¡Hasta pronto! 🥐'
+      '✅ Pedido #' + data.numStr + ' confirmado en ' + data.tenant_nombre + '\n\n' +
+      lineasTxt + '\n\n' +
+      '💰 Total: ' + parseFloat(data.total).toFixed(2) + '€\n' +
+      '📍 ' + data.local_nombre + '\n' +
+      '📅 ' + data.fecha_legible + ' a las ' + data.hora + 'h\n\n' +
+      '¡Hasta pronto! 🥐'
     );
     setTimeout(() => {
       window.location.href = 'https://wa.me/' + telNegocio + '?text=' + msg;
