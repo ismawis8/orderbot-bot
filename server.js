@@ -737,14 +737,8 @@ app.post('/pedido/:slug/confirmar', async (req, res) => {
       },
     });
 
-    const fechaLegible = new Date(fecha+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}); const lineasResumen = carrito.map(l => ({ nombre: l.nombre, cantidad: l.cantidad, subtotal: l.precio * l.cantidad })); res.json({    ok: true, numStr,    telefono_negocio: tenant.telefono_negocio,    tenant_nombre: tenant.nombre,   local_nombre: localObj?.nombre || local,   fecha_legible: fechaLegible,   hora,   total,   lineas: lineasResumen, });
-  } catch(err) {
-    console.error('Error pedido web:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-function generarWebPedido(tenant, productos, locales) {
+    const fechaLegible = new Date(fecha+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+    const lineasResumen = carrito.map(l => ({ nombre: l.nombre, cantidad: l.cantidad, subtotal: l.preciofunction generarWebPedido(tenant, productos, locales) {
   const hoy = new Date().toISOString().split('T')[0];
   const productosJson = JSON.stringify(productos.map(p => ({
     id: p.id, nombre: p.nombre, descripcion: p.descripcion,
@@ -752,6 +746,22 @@ function generarWebPedido(tenant, productos, locales) {
   })));
   const localesJson = JSON.stringify(locales.map(l => ({ id: l.id, nombre: l.nombre })));
   const slug = tenantSlug(tenant.nombre);
+
+  // Generar próximos 14 días hábiles con sus franjas
+  const diasDisp = [];
+  const d = new Date(); d.setHours(0,0,0,0);
+  for (let i = 0; diasDisp.length < 14; i++) {
+    const nd = new Date(d); nd.setDate(d.getDate()+i);
+    const dow = nd.getDay();
+    if (dow === 0) continue; // sin domingos
+    const iso = nd.toISOString().split('T')[0];
+    const label = nd.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'});
+    const franjas = dow === 6
+      ? ['07:30-10:00','10:00-14:30']
+      : ['07:00-10:00','10:00-13:00','13:00-16:00','16:00-20:30'];
+    diasDisp.push({ iso, label, franjas });
+  }
+  const diasJson = JSON.stringify(diasDisp);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -761,45 +771,52 @@ function generarWebPedido(tenant, productos, locales) {
 <title>Pedido — ${tenant.nombre}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:system-ui,sans-serif;background:#f4f4f6;min-height:100vh;padding-bottom:100px;}
-.header{background:#0f172a;color:#fff;padding:16px 20px;position:sticky;top:0;z-index:100;}
-.header-inner{display:flex;align-items:center;gap:10px;max-width:480px;margin:0 auto;}
-.logo{font-size:20px;font-weight:800;letter-spacing:-1px;}
-.logo span{font-weight:300;}
-.tenant-name{font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;}
-.content{max-width:480px;margin:0 auto;padding:16px;}
-.section{background:#fff;border-radius:12px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);}
-.section-title{padding:14px 16px;font-size:13px;font-weight:700;color:#555;border-bottom:1px solid #f0f0f0;text-transform:uppercase;letter-spacing:.04em;}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-height:100vh;padding-bottom:100px;}
+.header{background:#0f172a;color:#fff;padding:14px 20px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3);}
+.header-inner{display:flex;align-items:center;max-width:480px;margin:0 auto;}
+.logo{font-size:22px;font-weight:800;letter-spacing:-1px;display:flex;align-items:center;}
+.logo-light{font-weight:300;}
+.tenant-name{font-size:11px;color:rgba(255,255,255,.45);margin-top:1px;}
+.content{max-width:480px;margin:0 auto;padding:14px;}
+.section{background:#fff;border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+.section-title{padding:13px 16px;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #f0f0f0;text-transform:uppercase;letter-spacing:.06em;}
 .prod-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;}
 .prod-row:last-child{border:none;}
-.prod-img{width:52px;height:52px;border-radius:8px;object-fit:cover;background:#f0f0f0;flex-shrink:0;}
-.prod-img-ph{width:52px;height:52px;border-radius:8px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.prod-row.selected{background:#f0fdf4;}
+.prod-img{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#f0f0f0;flex-shrink:0;}
+.prod-img-ph{width:56px;height:56px;border-radius:10px;background:#f0f2f5;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;}
 .prod-info{flex:1;min-width:0;}
-.prod-nombre{font-size:14px;font-weight:700;color:#111;}
-.prod-desc{font-size:11px;color:#999;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.prod-precio{font-size:14px;font-weight:800;color:#1FB86A;margin-top:3px;}
-.stepper{display:flex;align-items:center;gap:8px;flex-shrink:0;}
-.stepper button{width:30px;height:30px;border-radius:50%;border:none;background:#f0f0f0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333;}
-.stepper button.active{background:#1FB86A;color:#fff;}
-.stepper span{font-size:15px;font-weight:700;width:20px;text-align:center;}
-.field{padding:12px 16px;border-bottom:1px solid #f5f5f5;}
+.prod-nombre{font-size:14px;font-weight:700;color:#111;line-height:1.2;}
+.prod-desc{font-size:11px;color:#999;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prod-precio{font-size:15px;font-weight:800;color:#1FB86A;margin-top:4px;}
+.stepper{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.stepper button{width:32px;height:32px;border-radius:50%;border:none;background:#f0f0f0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;color:#666;transition:all .15s;}
+.stepper button.plus{background:#1FB86A;color:#fff;}
+.stepper span{font-size:16px;font-weight:800;width:22px;text-align:center;color:#111;}
+.field{padding:13px 16px;border-bottom:1px solid #f5f5f5;}
 .field:last-child{border:none;}
-.field label{display:block;font-size:11px;font-weight:700;color:#999;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;}
-.field input,.field select,.field textarea{width:100%;border:none;outline:none;font-size:15px;font-family:inherit;color:#111;background:transparent;}
-.field textarea{resize:none;height:56px;}
-.carrito-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));}
-.carrito-inner{max-width:480px;margin:0 auto;display:flex;align-items:center;gap:12px;}
+.field label{display:block;font-size:11px;font-weight:700;color:#aaa;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;}
+.field input,.field select,.field textarea{width:100%;border:none;outline:none;font-size:15px;font-family:inherit;color:#111;background:transparent;-webkit-appearance:none;}
+.field input::placeholder{color:#ccc;}
+.field textarea{resize:none;height:52px;}
+.field select{cursor:pointer;}
+.franjas{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0;}
+.franja-btn{padding:10px 8px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;text-align:center;font-size:13px;font-weight:600;color:#555;transition:all .15s;}
+.franja-btn.selected{border-color:#1FB86A;background:#f0fdf4;color:#15803d;}
+.carrito-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e8e8e8;padding:12px 16px 16px;}
+.carrito-inner{max-width:480px;margin:0 auto;display:flex;align-items:center;gap:14px;}
 .carrito-info{flex:1;}
-.carrito-total{font-size:18px;font-weight:800;color:#111;}
-.carrito-items{font-size:12px;color:#999;}
-.btn-confirmar{padding:14px 24px;background:#1FB86A;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;}
-.btn-confirmar:disabled{background:#ccc;cursor:not-allowed;}
-.screen{display:none;} .screen.active{display:block;}
-.success{text-align:center;padding:60px 20px;}
-.success-icon{font-size:64px;margin-bottom:16px;}
-.success h2{font-size:22px;font-weight:800;color:#111;margin-bottom:8px;}
-.success p{color:#666;font-size:14px;line-height:1.6;}
-.success .num{font-size:28px;font-weight:800;color:#1FB86A;margin:12px 0;}
+.carrito-total{font-size:20px;font-weight:800;color:#111;line-height:1;}
+.carrito-items{font-size:12px;color:#aaa;margin-top:2px;}
+.btn-confirmar{padding:14px 22px;background:#1FB86A;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(31,184,106,.35);}
+.btn-confirmar:disabled{background:#d1d5db;box-shadow:none;cursor:not-allowed;}
+.screen{display:none;}.screen.active{display:block;}
+.success{text-align:center;padding:70px 20px;}
+.success-icon{font-size:72px;margin-bottom:20px;}
+.success h2{font-size:24px;font-weight:800;color:#111;margin-bottom:8px;}
+.success .num{font-size:32px;font-weight:800;color:#1FB86A;margin:14px 0;}
+.success p{color:#777;font-size:14px;line-height:1.7;}
+.badge-wa{display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;margin-top:16px;}
 </style>
 </head>
 <body>
@@ -807,7 +824,9 @@ body{font-family:system-ui,sans-serif;background:#f4f4f6;min-height:100vh;paddin
 <div class="header">
   <div class="header-inner">
     <div>
-      <div class="logo"><span>Pedi</span>d<svg width="20" height="20" viewBox="0 0 120 120" style="display:inline-block;vertical-align:-0.07em;margin:0 1px"><circle cx="60" cy="56" r="52" fill="#1FB86A"/><path d="M22 88 L14 116 L48 104 Z" fill="#1FB86A"/><g transform="translate(4,-1)" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M28 60 L40 72 L66 42"/><path d="M53 67 L58 72 L84 42"/></g></svg>ne</div>
+      <div class="logo">
+        <span class="logo-light">Pedi</span>d<svg width="22" height="22" viewBox="0 0 120 120" style="display:inline-block;vertical-align:-0.1em;margin:0 1px"><circle cx="60" cy="56" r="52" fill="#1FB86A"/><path d="M22 88 L14 116 L48 104 Z" fill="#1FB86A"/><g transform="translate(4,-1)" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M28 60 L40 72 L66 42"/><path d="M53 67 L58 72 L84 42"/></g></svg>ne
+      </div>
       <div class="tenant-name">${tenant.nombre}</div>
     </div>
   </div>
@@ -816,13 +835,11 @@ body{font-family:system-ui,sans-serif;background:#f4f4f6;min-height:100vh;paddin
 <div id="screen-pedido" class="screen active">
   <div class="content">
 
-    <!-- Productos -->
     <div class="section">
       <div class="section-title">🛒 Selecciona tus productos</div>
       <div id="productos-lista"></div>
     </div>
 
-    <!-- Datos -->
     <div class="section">
       <div class="section-title">👤 Tus datos</div>
       <div class="field">
@@ -830,36 +847,38 @@ body{font-family:system-ui,sans-serif;background:#f4f4f6;min-height:100vh;paddin
         <input id="nombre" type="text" placeholder="Tu nombre" autocomplete="name"/>
       </div>
       <div class="field">
-        <label>Teléfono WhatsApp * <span style="font-weight:400;text-transform:none">(recibirás confirmación)</span></label>
-        <input id="telefono" type="tel" placeholder="34612345678" autocomplete="tel"/>
+        <label>Teléfono * <span style="font-weight:400;text-transform:none;letter-spacing:0">(sin prefijo, ej: 612345678)</span></label>
+        <input id="telefono" type="tel" placeholder="612345678" autocomplete="tel" maxlength="9"/>
       </div>
     </div>
 
-    <!-- Recogida -->
     <div class="section">
       <div class="section-title">📅 Recogida</div>
       ${locales.length > 1 ? `
       <div class="field">
         <label>Local *</label>
-        <select id="local">${locales.map(l => `<option value="${l.id}">${l.nombre}</option>`).join('')}</select>
-      </div>` : `<input type="hidden" id="local" value="${locales[0]?.id || ''}"/>`}
+        <select id="local">${locales.map(l => '<option value="'+l.id+'">'+l.nombre+'</option>').join('')}</select>
+      </div>` : '<input type="hidden" id="local" value="'+locales[0]?.id+'"/>'}
       <div class="field">
-        <label>Fecha *</label>
-        <input id="fecha" type="date" min="${hoy}"/>
+        <label>Día *</label>
+        <select id="fecha" onchange="actualizarFranjas()">
+          <option value="">Selecciona un día</option>
+        </select>
       </div>
       <div class="field">
-        <label>Hora *</label>
-        <input id="hora" type="time" min="07:00" max="20:30" step="1800"/>
+        <label>Franja horaria *</label>
+        <div class="franjas" id="franjas-container">
+          <p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p>
+        </div>
       </div>
       <div class="field">
-        <label>Observaciones <span style="font-weight:400;text-transform:none">(opcional)</span></label>
+        <label>Observaciones <span style="font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
         <textarea id="obs" placeholder="Alergias, instrucciones especiales..."></textarea>
       </div>
     </div>
 
   </div>
 
-  <!-- Barra inferior -->
   <div class="carrito-bar">
     <div class="carrito-inner">
       <div class="carrito-info">
@@ -879,15 +898,18 @@ body{font-family:system-ui,sans-serif;background:#f4f4f6;min-height:100vh;paddin
       <div class="success-icon">🎉</div>
       <h2>¡Pedido confirmado!</h2>
       <div class="num" id="success-num">#0000</div>
-      <p>Te hemos enviado la confirmación por WhatsApp.<br/>¡Te esperamos en <strong>${tenant.nombre}</strong>!</p>
+      <p>Ahora abre WhatsApp para ver tu confirmación.<br/>¡Te esperamos en <strong>${tenant.nombre}</strong>!</p>
+      <div class="badge-wa">📱 Abriendo WhatsApp...</div>
     </div>
   </div>
 </div>
 
 <script>
 const PRODUCTOS = ${productosJson};
+const DIAS = ${diasJson};
 const SLUG = '${slug}';
 let cantidades = {};
+let franjaSeleccionada = '';
 
 // Render productos
 const lista = document.getElementById('productos-lista');
@@ -895,97 +917,120 @@ PRODUCTOS.forEach(p => {
   cantidades[p.id] = 0;
   const div = document.createElement('div');
   div.className = 'prod-row';
-  div.id = 'prod-'+p.id;
-  div.innerHTML = \`
-    \${p.imagen_url
-      ? \`<img class="prod-img" src="\${p.imagen_url}" alt="\${p.nombre}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-         <div class="prod-img-ph" style="display:none">📦</div>\`
-      : \`<div class="prod-img-ph">📦</div>\`}
-    <div class="prod-info">
-      <div class="prod-nombre">\${p.nombre}</div>
-      \${p.descripcion ? \`<div class="prod-desc">\${p.descripcion}</div>\` : ''}
-      <div class="prod-precio">\${p.precio.toFixed(2).replace('.',',')}€</div>
-    </div>
-    <div class="stepper">
-      <button onclick="cambiar('\${p.id}',-1)">−</button>
-      <span id="qty-\${p.id}">0</span>
-      <button class="active" onclick="cambiar('\${p.id}',1)">+</button>
-    </div>
-  \`;
+  div.id = 'row-'+p.id;
+  div.innerHTML = (p.imagen_url
+    ? '<img class="prod-img" src="'+p.imagen_url+'" alt="'+p.nombre+'" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'flex\\'">'
+      +'<div class="prod-img-ph" style="display:none">📦</div>'
+    : '<div class="prod-img-ph">📦</div>')
+    +'<div class="prod-info">'
+    +'<div class="prod-nombre">'+p.nombre+'</div>'
+    +(p.descripcion ? '<div class="prod-desc">'+p.descripcion+'</div>' : '')
+    +'<div class="prod-precio">'+p.precio.toFixed(2).replace('.',',')+'€</div>'
+    +'</div>'
+    +'<div class="stepper">'
+    +'<button onclick="cambiar(\\''+p.id+'\\',-1)">−</button>'
+    +'<span id="qty-'+p.id+'">0</span>'
+    +'<button class="plus" onclick="cambiar(\\''+p.id+'\\',1)">+</button>'
+    +'</div>';
   lista.appendChild(div);
 });
+
+// Poblar selector de días
+const selFecha = document.getElementById('fecha');
+DIAS.forEach(d => {
+  const opt = document.createElement('option');
+  opt.value = d.iso;
+  opt.textContent = d.label;
+  selFecha.appendChild(opt);
+});
+
+function actualizarFranjas() {
+  const iso = document.getElementById('fecha').value;
+  const dia = DIAS.find(d => d.iso === iso);
+  franjaSeleccionada = '';
+  const cont = document.getElementById('franjas-container');
+  if (!dia) { cont.innerHTML = '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p>'; return; }
+  cont.innerHTML = dia.franjas.map(f =>
+    '<button type="button" class="franja-btn" onclick="selFranja(\\''+f+'\\')" id="franja-'+f.replace(':','-').replace(':','-')+'">'+f+'h</button>'
+  ).join('');
+}
+
+function selFranja(f) {
+  franjaSeleccionada = f;
+  document.querySelectorAll('.franja-btn').forEach(b => b.classList.remove('selected'));
+  const id = 'franja-'+f.replace(':','-').replace(':','-');
+  const el = document.getElementById(id);
+  if (el) el.classList.add('selected');
+}
 
 function cambiar(id, delta) {
   cantidades[id] = Math.max(0, (cantidades[id]||0) + delta);
   document.getElementById('qty-'+id).textContent = cantidades[id];
+  const row = document.getElementById('row-'+id);
+  row.classList.toggle('selected', cantidades[id] > 0);
   actualizarTotal();
 }
 
 function actualizarTotal() {
   let total = 0, items = 0;
-  PRODUCTOS.forEach(p => {
-    total += p.precio * (cantidades[p.id]||0);
-    items += cantidades[p.id]||0;
-  });
+  PRODUCTOS.forEach(p => { total += p.precio*(cantidades[p.id]||0); items += cantidades[p.id]||0; });
   document.getElementById('total-display').textContent = total.toFixed(2).replace('.',',')+'€';
-  document.getElementById('items-display').textContent = items===0 ? 'Sin productos' : items+' producto'+(items===1?'':'s');
+  document.getElementById('items-display').textContent = items===0 ? 'Sin productos' : items+' unidad'+(items===1?'':'es');
   document.getElementById('btn-confirmar').disabled = items === 0;
 }
 
 async function confirmarPedido() {
   const nombre   = document.getElementById('nombre').value.trim();
-  const telefono = document.getElementById('telefono').value.trim().replace(/\\D/g,'');
+  let tel        = document.getElementById('telefono').value.trim().replace(/\D/g,'');
   const local    = document.getElementById('local').value;
   const fecha    = document.getElementById('fecha').value;
-  const hora     = document.getElementById('hora').value;
   const obs      = document.getElementById('obs').value.trim();
 
-  if (!nombre)         { alert('Introduce tu nombre'); return; }
-  // Añadir prefijo 34 automáticamente si no lo tienen let telFinal = telefono.replace(/\D/g,''); if (telFinal.startsWith('6') || telFinal.startsWith('7') || telFinal.startsWith('9')) {   telFinal = '34' + telFinal; } if (telFinal.length < 11) { alert('Introduce un teléfono válido'); return; }
-  if (!fecha)          { alert('Selecciona la fecha de recogida'); return; }
-  if (!hora)           { alert('Selecciona la hora de recogida'); return; }
+  if (!nombre)   { alert('Introduce tu nombre'); return; }
+  if (!tel || tel.length < 9) { alert('Introduce un teléfono válido (9 dígitos)'); return; }
+  if (!fecha)    { alert('Selecciona el día de recogida'); return; }
+  if (!franjaSeleccionada) { alert('Selecciona una franja horaria'); return; }
 
-  const carrito = PRODUCTOS
-    .filter(p => cantidades[p.id] > 0)
+  // Prefijo 34 automático
+  if (!tel.startsWith('34')) tel = '34' + tel;
+
+  const carrito = PRODUCTOS.filter(p => cantidades[p.id] > 0)
     .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precio, cantidad: cantidades[p.id] }));
-
   if (!carrito.length) { alert('Añade al menos un producto'); return; }
 
   const btn = document.getElementById('btn-confirmar');
-  btn.disabled = true;
-  btn.textContent = 'Enviando...';
+  btn.disabled = true; btn.textContent = 'Enviando...';
 
   try {
     const res = await fetch('/pedido/'+SLUG+'/confirmar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre, telefono, local, fecha, hora, observaciones: obs, carrito }),
+      body: JSON.stringify({ nombre, telefono: tel, local, fecha, hora: franjaSeleccionada, observaciones: obs, carrito }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
     document.getElementById('success-num').textContent = '#'+data.numStr;
-    // Redirigir a WhatsApp con el resumen completo
-    const telNegocio = data.telefono_negocio || '';
-    const lineasTxt = (data.lineas||[]).map(l => '• '+l.cantidad+'× '+l.nombre+' — '+parseFloat(l.subtotal).toFixed(2)+'€').join('\n');
-    const msg = encodeURIComponent(
-      '✅ Pedido #' + data.numStr + ' confirmado en ' + data.tenant_nombre + '\n\n' +
-      lineasTxt + '\n\n' +
-      '💰 Total: ' + parseFloat(data.total).toFixed(2) + '€\n' +
-      '📍 ' + data.local_nombre + '\n' +
-      '📅 ' + data.fecha_legible + ' a las ' + data.hora + 'h\n\n' +
-      '¡Hasta pronto! 🥐'
-    );
-    setTimeout(() => {
-      window.location.href = 'https://wa.me/' + telNegocio + '?text=' + msg;
-    }, 1500);
     document.getElementById('screen-pedido').classList.remove('active');
     document.getElementById('screen-success').classList.add('active');
     window.scrollTo(0,0);
+
+    // Construir mensaje WhatsApp con resumen completo
+    const lineasTxt = (data.lineas||[]).map(l => '- '+l.cantidad+'x '+l.nombre+' ('+parseFloat(l.subtotal).toFixed(2)+'€)').join('%0A');
+    const msg = '%E2%9C%85 Pedido %23'+data.numStr+' confirmado en '+encodeURIComponent(data.tenant_nombre)+'%0A%0A'
+      + lineasTxt+'%0A%0A'
+      +'%F0%9F%92%B0 Total: '+parseFloat(data.total).toFixed(2)+'%E2%82%AC%0A'
+      +'%F0%9F%93%8D '+encodeURIComponent(data.local_nombre)+'%0A'
+      +'%F0%9F%93%85 '+encodeURIComponent(data.fecha_legible)+' - '+encodeURIComponent(data.hora)+'h%0A%0A'
+      +'%C2%A1Hasta pronto! %F0%9F%A5%90';
+
+    setTimeout(() => {
+      window.location.href = 'https://wa.me/'+data.telefono_negocio+'?text='+msg;
+    }, 1500);
+
   } catch(err) {
     alert('Error: '+err.message);
-    btn.disabled = false;
-    btn.textContent = 'Confirmar →';
+    btn.disabled = false; btn.textContent = 'Confirmar →';
   }
 }
 </script>
