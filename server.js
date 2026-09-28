@@ -640,6 +640,73 @@ async function enviarLista(tel, tenant, texto, botonTexto, secciones) {
 app.listen(PORT, () => console.log(`🚀 OrderBot v6 corriendo en :${PORT}`));
 
 // ============================================================
+// ENDPOINT: Editar pedido desde dashboard
+// ============================================================
+app.post('/admin/pedido/:id/editar', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  if (authHeader !== `Bearer ${process.env.MASTER_SECRET}`) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+
+  const { id } = req.params;
+  const { local_id, local_nombre, fecha_recogida, hora_recogida, observaciones, lineas } = req.body;
+
+  try {
+    // 1. Obtener pedido actual con tenant
+    const { data: pedido, error: pErr } = await supabase
+      .from('pedidos').select('*, tenants(*)').eq('id', id).single();
+    if (pErr || !pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+    const tenant = pedido.tenants;
+
+    // 2. Calcular nuevo total
+    const total = lineas.reduce((s, l) => s + l.precio * l.cantidad, 0);
+
+    // 3. Actualizar pedido
+    const { error: uErr } = await supabase.from('pedidos').update({
+      local_id, local_nombre, fecha_recogida,
+      hora_recogida, observaciones: observaciones || null, total,
+    }).eq('id', id);
+    if (uErr) throw uErr;
+
+    // 4. Borrar líneas antiguas e insertar nuevas
+    await supabase.from('pedido_lineas').delete().eq('pedido_id', id);
+    await supabase.from('pedido_lineas').insert(
+      lineas.map(l => ({
+        pedido_id: id,
+        producto_id: l.producto_id,
+        producto_nombre: l.nombre,
+        producto_precio: l.precio,
+        cantidad: l.cantidad,
+      }))
+    );
+
+    // 5. WhatsApp al cliente con el resumen actualizado
+    const numStr = String(pedido.numero_pedido).padStart(4, '0');
+    const lineasTxt = lineas.map(l => `• ${l.cantidad}× ${l.nombre}`).join('\n');
+    const fechaTxt = new Date(fecha_recogida+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+
+    await whatsappSend(tenant, {
+      to: pedido.cliente_telefono, type: 'text', text: { body:
+        `✏️ *Tu pedido #${numStr} ha sido actualizado*\n\n` +
+        `${lineasTxt}\n\n` +
+        `💰 Total: ${total.toFixed(2)}€\n` +
+        `📍 ${local_nombre}\n` +
+        `📅 ${fechaTxt} · ${hora_recogida}h\n\n` +
+        (observaciones ? `📝 ${observaciones}\n\n` : '') +
+        `¡Te esperamos! 🥐`,
+      },
+    });
+
+    res.json({ ok: true, total });
+  } catch(err) {
+    console.error('Error editando pedido:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ============================================================
 // WEB DE PEDIDO — /pedido/:slug
 // ============================================================
 
@@ -958,14 +1025,14 @@ function onFechaChange(input) {
     : ['07:00-10:00','10:00-13:00','13:00-16:00','16:00-20:30'];
   const cont = document.getElementById('franjas-container');
   cont.innerHTML = franjas.map(f =>
-    '<button type="button" class="franja-btn" onclick="selFranja(this,\\''+f+'\\')" >'+f+'h</button>'
+    '<button type="button" class="franja-btn" onclick="selFranja(\\''+f+'\\')" id="fb-'+f.replace(/:/g,'-').replace(/\//g,'-')+'">'+f+'h</button>'
   ).join('');
 }
 
-function selFranja(btn, f) {
+function selFranja(f) {
   franjaSeleccionada = f;
   document.querySelectorAll('.franja-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
+  document.getElementById('fb-'+f.replace(/:/g,'-').replace(/\//g,'-')).classList.add('selected');
 }
 
 function cambiar(id, delta) {
