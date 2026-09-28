@@ -755,29 +755,17 @@ app.post('/pedido/:slug/confirmar', async (req, res) => {
 });
 
 function generarWebPedido(tenant, productos, locales) {
-  const hoy = new Date().toISOString().split('T')[0];
   const productosJson = JSON.stringify(productos.map(p => ({
     id: p.id, nombre: p.nombre, descripcion: p.descripcion,
     precio: p.precio, imagen_url: p.imagen_url,
   })));
-  const localesJson = JSON.stringify(locales.map(l => ({ id: l.id, nombre: l.nombre })));
   const slug = tenantSlug(tenant.nombre);
 
-  // Generar próximos 14 días hábiles con sus franjas
-  const diasDisp = [];
-  const d = new Date(); d.setHours(0,0,0,0);
-  for (let i = 0; diasDisp.length < 14; i++) {
-    const nd = new Date(d); nd.setDate(d.getDate()+i);
-    const dow = nd.getDay();
-    if (dow === 0) continue; // sin domingos
-    const iso = nd.toISOString().split('T')[0];
-    const label = nd.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'});
-    const franjas = dow === 6
-      ? ['07:30-10:00','10:00-14:30']
-      : ['07:00-10:00','10:00-13:00','13:00-16:00','16:00-20:30'];
-    diasDisp.push({ iso, label, franjas });
+  // Franjas por día de semana
+  function getFranjas(dow) {
+    if (dow === 6) return ['07:30-10:00','10:00-14:30'];
+    return ['07:00-10:00','10:00-13:00','13:00-16:00','16:00-20:30'];
   }
-  const diasJson = JSON.stringify(diasDisp);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -806,7 +794,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
 .prod-desc{font-size:11px;color:#999;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .prod-precio{font-size:15px;font-weight:800;color:#1FB86A;margin-top:4px;}
 .stepper{display:flex;align-items:center;gap:6px;flex-shrink:0;}
-.stepper button{width:32px;height:32px;border-radius:50%;border:none;background:#f0f0f0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;color:#666;transition:all .15s;}
+.stepper button{width:32px;height:32px;border-radius:50%;border:none;background:#f0f0f0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;color:#666;}
 .stepper button.plus{background:#1FB86A;color:#fff;}
 .stepper span{font-size:16px;font-weight:800;width:22px;text-align:center;color:#111;}
 .field{padding:13px 16px;border-bottom:1px solid #f5f5f5;}
@@ -815,8 +803,8 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
 .field input,.field select,.field textarea{width:100%;border:none;outline:none;font-size:15px;font-family:inherit;color:#111;background:transparent;-webkit-appearance:none;}
 .field input::placeholder{color:#ccc;}
 .field textarea{resize:none;height:52px;}
-.field select{cursor:pointer;}
-.franjas{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0;}
+.field-error{color:#ef4444;font-size:12px;margin-top:4px;display:none;}
+.franjas{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .franja-btn{padding:10px 8px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;text-align:center;font-size:13px;font-weight:600;color:#555;transition:all .15s;}
 .franja-btn.selected{border-color:#1FB86A;background:#f0fdf4;color:#15803d;}
 .carrito-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e8e8e8;padding:12px 16px 16px;}
@@ -877,9 +865,8 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
       </div>` : '<input type="hidden" id="local" value="'+locales[0]?.id+'"/>'}
       <div class="field">
         <label>Día *</label>
-        <div class="field">   <label>Día *</label>   <input id="fecha" type="date" min="" onchange="validarFecha(this);actualizarFranjas()"/>   <div id="fecha-error" style="color:#ef4444;font-size:12px;margin-top:4px;display:none">     Los domingos estamos cerrados. Elige otro día.   </div> </div>
-          <option value="">Selecciona un día</option>
-        </select>
+        <input id="fecha" type="date" onchange="onFechaChange(this)"/>
+        <div class="field-error" id="fecha-error">Los domingos estamos cerrados. Elige otro día.</div>
       </div>
       <div class="field">
         <label>Franja horaria *</label>
@@ -922,10 +909,12 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
 
 <script>
 const PRODUCTOS = ${productosJson};
-const DIAS = ${diasJson};
 const SLUG = '${slug}';
 let cantidades = {};
 let franjaSeleccionada = '';
+
+// Fecha mínima = hoy
+document.getElementById('fecha').min = new Date().toISOString().split('T')[0];
 
 // Render productos
 const lista = document.getElementById('productos-lista');
@@ -951,46 +940,38 @@ PRODUCTOS.forEach(p => {
   lista.appendChild(div);
 });
 
-// Establecer fecha mínima = hoy
-document.getElementById('fecha').min = new Date().toISOString().split('T')[0];
-
-function validarFecha(input) {
-  const fecha = new Date(input.value + 'T12:00:00');
+function onFechaChange(input) {
   const errEl = document.getElementById('fecha-error');
+  const fecha = new Date(input.value + 'T12:00:00');
+  franjaSeleccionada = '';
   if (fecha.getDay() === 0) {
     errEl.style.display = 'block';
     input.value = '';
-    franjaSeleccionada = '';
-    document.getElementById('franjas-container').innerHTML = 
+    document.getElementById('franjas-container').innerHTML =
       '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p>';
-  } else {
-    errEl.style.display = 'none';
+    return;
   }
-}
-function actualizarFranjas() {
-  const iso = document.getElementById('fecha').value;
-  const dia = DIAS.find(d => d.iso === iso);
-  franjaSeleccionada = '';
+  errEl.style.display = 'none';
+  const dow = fecha.getDay();
+  const franjas = dow === 6
+    ? ['07:30-10:00','10:00-14:30']
+    : ['07:00-10:00','10:00-13:00','13:00-16:00','16:00-20:30'];
   const cont = document.getElementById('franjas-container');
-  if (!dia) { cont.innerHTML = '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p>'; return; }
-  cont.innerHTML = dia.franjas.map(f =>
-    '<button type="button" class="franja-btn" onclick="selFranja(\\''+f+'\\')" id="franja-'+f.replace(':','-').replace(':','-')+'">'+f+'h</button>'
+  cont.innerHTML = franjas.map(f =>
+    '<button type="button" class="franja-btn" onclick="selFranja(\\''+f+'\\')" id="fb-'+f.replace(/:/g,'-').replace(/\//g,'-')+'">'+f+'h</button>'
   ).join('');
 }
 
 function selFranja(f) {
   franjaSeleccionada = f;
   document.querySelectorAll('.franja-btn').forEach(b => b.classList.remove('selected'));
-  const id = 'franja-'+f.replace(':','-').replace(':','-');
-  const el = document.getElementById(id);
-  if (el) el.classList.add('selected');
+  document.getElementById('fb-'+f.replace(/:/g,'-').replace(/\//g,'-')).classList.add('selected');
 }
 
 function cambiar(id, delta) {
   cantidades[id] = Math.max(0, (cantidades[id]||0) + delta);
   document.getElementById('qty-'+id).textContent = cantidades[id];
-  const row = document.getElementById('row-'+id);
-  row.classList.toggle('selected', cantidades[id] > 0);
+  document.getElementById('row-'+id).classList.toggle('selected', cantidades[id] > 0);
   actualizarTotal();
 }
 
@@ -1003,20 +984,20 @@ function actualizarTotal() {
 }
 
 async function confirmarPedido() {
-  const nombre   = document.getElementById('nombre').value.trim();
-  let tel        = document.getElementById('telefono').value.trim().replace(/\D/g,'');
-  const local    = document.getElementById('local').value;
-  const fecha    = document.getElementById('fecha').value;
-  const obs      = document.getElementById('obs').value.trim();
+  const nombre = document.getElementById('nombre').value.trim();
+  let tel      = document.getElementById('telefono').value.trim().replace(/\D/g,'');
+  const local  = document.getElementById('local').value;
+  const fecha  = document.getElementById('fecha').value;
+  const obs    = document.getElementById('obs').value.trim();
 
   if (!nombre)   { alert('Introduce tu nombre'); return; }
   if (!tel || tel.length < 9) { alert('Introduce un teléfono válido (9 dígitos)'); return; }
   if (!fecha)    { alert('Selecciona el día de recogida'); return; }
-  if (new Date(fecha + 'T12:00:00').getDay() === 0) { alert('Los domingos estamos cerrados'); return; }
+  if (new Date(fecha+'T12:00:00').getDay()===0) { alert('Los domingos estamos cerrados'); return; }
   if (!franjaSeleccionada) { alert('Selecciona una franja horaria'); return; }
 
   // Prefijo 34 automático
-  if (!tel.startsWith('34')) tel = '34' + tel;
+  if (!tel.startsWith('34')) tel = '34'+tel;
 
   const carrito = PRODUCTOS.filter(p => cantidades[p.id] > 0)
     .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precio, cantidad: cantidades[p.id] }));
@@ -1039,10 +1020,10 @@ async function confirmarPedido() {
     document.getElementById('screen-success').classList.add('active');
     window.scrollTo(0,0);
 
-    // Construir mensaje WhatsApp con resumen completo
+    // Mensaje WhatsApp con resumen completo — va al cliente
     const lineasTxt = (data.lineas||[]).map(l => '- '+l.cantidad+'x '+l.nombre+' ('+parseFloat(l.subtotal).toFixed(2)+'€)').join('%0A');
     const msg = '%E2%9C%85 Pedido %23'+data.numStr+' confirmado en '+encodeURIComponent(data.tenant_nombre)+'%0A%0A'
-      + lineasTxt+'%0A%0A'
+      +lineasTxt+'%0A%0A'
       +'%F0%9F%92%B0 Total: '+parseFloat(data.total).toFixed(2)+'%E2%82%AC%0A'
       +'%F0%9F%93%8D '+encodeURIComponent(data.local_nombre)+'%0A'
       +'%F0%9F%93%85 '+encodeURIComponent(data.fecha_legible)+' - '+encodeURIComponent(data.hora)+'h%0A%0A'
