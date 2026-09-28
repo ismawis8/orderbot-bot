@@ -877,7 +877,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
       </div>` : '<input type="hidden" id="local" value="'+locales[0]?.id+'"/>'}
       <div class="field">
         <label>Día *</label>
-        <select id="fecha" onchange="actualizarFranjas()">
+        <div class="field">   <label>Día *</label>   <input id="fecha" type="date" min="" onchange="validarFecha(this);actualizarFranjas()"/>   <div id="fecha-error" style="color:#ef4444;font-size:12px;margin-top:4px;display:none">     Los domingos estamos cerrados. Elige otro día.   </div> </div>
           <option value="">Selecciona un día</option>
         </select>
       </div>
@@ -951,15 +951,22 @@ PRODUCTOS.forEach(p => {
   lista.appendChild(div);
 });
 
-// Poblar selector de días
-const selFecha = document.getElementById('fecha');
-DIAS.forEach(d => {
-  const opt = document.createElement('option');
-  opt.value = d.iso;
-  opt.textContent = d.label;
-  selFecha.appendChild(opt);
-});
+// Establecer fecha mínima = hoy
+document.getElementById('fecha').min = new Date().toISOString().split('T')[0];
 
+function validarFecha(input) {
+  const fecha = new Date(input.value + 'T12:00:00');
+  const errEl = document.getElementById('fecha-error');
+  if (fecha.getDay() === 0) {
+    errEl.style.display = 'block';
+    input.value = '';
+    franjaSeleccionada = '';
+    document.getElementById('franjas-container').innerHTML = 
+      '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p>';
+  } else {
+    errEl.style.display = 'none';
+  }
+}
 function actualizarFranjas() {
   const iso = document.getElementById('fecha').value;
   const dia = DIAS.find(d => d.iso === iso);
@@ -1005,6 +1012,7 @@ async function confirmarPedido() {
   if (!nombre)   { alert('Introduce tu nombre'); return; }
   if (!tel || tel.length < 9) { alert('Introduce un teléfono válido (9 dígitos)'); return; }
   if (!fecha)    { alert('Selecciona el día de recogida'); return; }
+  if (new Date(fecha + 'T12:00:00').getDay() === 0) { alert('Los domingos estamos cerrados'); return; }
   if (!franjaSeleccionada) { alert('Selecciona una franja horaria'); return; }
 
   // Prefijo 34 automático
