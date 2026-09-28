@@ -958,14 +958,14 @@ function onFechaChange(input) {
     : ['07:00-10:00','10:00-13:00','13:00-16:00','16:00-20:30'];
   const cont = document.getElementById('franjas-container');
   cont.innerHTML = franjas.map(f =>
-    '<button type="button" class="franja-btn" onclick="selFranja(\\''+f+'\\')" id="fb-'+f.replace(/:/g,'-').replace(/\//g,'-')+'">'+f+'h</button>'
+    '<button type="button" class="franja-btn" onclick="selFranja(this,\\''+f+'\\')" >'+f+'h</button>'
   ).join('');
 }
 
-function selFranja(f) {
+function selFranja(btn, f) {
   franjaSeleccionada = f;
   document.querySelectorAll('.franja-btn').forEach(b => b.classList.remove('selected'));
-  document.getElementById('fb-'+f.replace(/:/g,'-').replace(/\//g,'-')).classList.add('selected');
+  btn.classList.add('selected');
 }
 
 function cambiar(id, delta) {
