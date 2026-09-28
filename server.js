@@ -990,28 +990,72 @@ let franjaSeleccionada = '';
 // Fecha mínima = hoy
 document.getElementById('fecha').min = new Date().toISOString().split('T')[0];
 
-// Render productos
+// Render productos usando createElement (sin innerHTML con onclick)
 const lista = document.getElementById('productos-lista');
-PRODUCTOS.forEach(p => {
+PRODUCTOS.forEach(function(p) {
   cantidades[p.id] = 0;
-  const div = document.createElement('div');
-  div.className = 'prod-row';
-  div.id = 'row-'+p.id;
-  div.innerHTML = (p.imagen_url
-    ? '<img class="prod-img" src="'+p.imagen_url+'" alt="'+p.nombre+'" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'flex\\'">'
-      +'<div class="prod-img-ph" style="display:none">📦</div>'
-    : '<div class="prod-img-ph">📦</div>')
-    +'<div class="prod-info">'
-    +'<div class="prod-nombre">'+p.nombre+'</div>'
-    +(p.descripcion ? '<div class="prod-desc">'+p.descripcion+'</div>' : '')
-    +'<div class="prod-precio">'+p.precio.toFixed(2).replace('.',',')+'€</div>'
-    +'</div>'
-    +'<div class="stepper">'
-    +'<button onclick="cambiar(\\''+p.id+'\\',-1)">−</button>'
-    +'<span id="qty-'+p.id+'">0</span>'
-    +'<button class="plus" onclick="cambiar(\\''+p.id+'\\',1)">+</button>'
-    +'</div>';
-  lista.appendChild(div);
+  const row = document.createElement('div');
+  row.className = 'prod-row';
+  row.id = 'row-'+p.id;
+
+  // Imagen
+  if (p.imagen_url) {
+    const img = document.createElement('img');
+    img.className = 'prod-img';
+    img.src = p.imagen_url;
+    img.alt = p.nombre;
+    img.onerror = function(){ this.style.display='none'; ph.style.display='flex'; };
+    row.appendChild(img);
+    var ph = document.createElement('div');
+    ph.className = 'prod-img-ph';
+    ph.style.display = 'none';
+    ph.textContent = '📦';
+    row.appendChild(ph);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'prod-img-ph';
+    ph.textContent = '📦';
+    row.appendChild(ph);
+  }
+
+  // Info
+  const info = document.createElement('div');
+  info.className = 'prod-info';
+  const nom = document.createElement('div');
+  nom.className = 'prod-nombre';
+  nom.textContent = p.nombre;
+  info.appendChild(nom);
+  if (p.descripcion) {
+    const desc = document.createElement('div');
+    desc.className = 'prod-desc';
+    desc.textContent = p.descripcion;
+    info.appendChild(desc);
+  }
+  const precio = document.createElement('div');
+  precio.className = 'prod-precio';
+  precio.textContent = p.precio.toFixed(2).replace('.',',')+'€';
+  info.appendChild(precio);
+  row.appendChild(info);
+
+  // Stepper
+  const stepper = document.createElement('div');
+  stepper.className = 'stepper';
+  const btnMinus = document.createElement('button');
+  btnMinus.textContent = '−';
+  btnMinus.addEventListener('click', function(){ cambiar(p.id, -1); });
+  const qty = document.createElement('span');
+  qty.id = 'qty-'+p.id;
+  qty.textContent = '0';
+  const btnPlus = document.createElement('button');
+  btnPlus.className = 'plus';
+  btnPlus.textContent = '+';
+  btnPlus.addEventListener('click', function(){ cambiar(p.id, 1); });
+  stepper.appendChild(btnMinus);
+  stepper.appendChild(qty);
+  stepper.appendChild(btnPlus);
+  row.appendChild(stepper);
+
+  lista.appendChild(row);
 });
 
 function onFechaChange(input) {
@@ -1031,15 +1075,19 @@ function onFechaChange(input) {
     ? ['07:30-10:00','10:00-14:30']
     : ['07:00-10:00','10:00-13:00','13:00-16:00','16:00-20:30'];
   const cont = document.getElementById('franjas-container');
-  cont.innerHTML = franjas.map(f =>
-    '<button type="button" class="franja-btn" onclick="selFranja(this,\'' + f + '\')">'+f+'h</button>'
-  ).join('');
-}
-
-function selFranja(btn, f) {
-  franjaSeleccionada = f;
-  document.querySelectorAll('.franja-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
+  cont.innerHTML = '';
+  franjas.forEach(function(f) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'franja-btn';
+    btn.textContent = f+'h';
+    btn.addEventListener('click', function() {
+      franjaSeleccionada = f;
+      document.querySelectorAll('.franja-btn').forEach(function(b){ b.classList.remove('selected'); });
+      btn.classList.add('selected');
+    });
+    cont.appendChild(btn);
+  });
 }
 
 function cambiar(id, delta) {
@@ -1050,8 +1098,8 @@ function cambiar(id, delta) {
 }
 
 function actualizarTotal() {
-  let total = 0, items = 0;
-  PRODUCTOS.forEach(p => { total += p.precio*(cantidades[p.id]||0); items += cantidades[p.id]||0; });
+  var total = 0, items = 0;
+  PRODUCTOS.forEach(function(p){ total += p.precio*(cantidades[p.id]||0); items += cantidades[p.id]||0; });
   document.getElementById('total-display').textContent = total.toFixed(2).replace('.',',')+'€';
   document.getElementById('items-display').textContent = items===0 ? 'Sin productos' : items+' unidad'+(items===1?'':'es');
   document.getElementById('btn-confirmar').disabled = items === 0;
@@ -1059,7 +1107,7 @@ function actualizarTotal() {
 
 async function confirmarPedido() {
   const nombre = document.getElementById('nombre').value.trim();
-  let tel      = document.getElementById('telefono').value.trim().replace(/\D/g,'');
+  var tel      = document.getElementById('telefono').value.trim().replace(/\D/g,'');
   const local  = document.getElementById('local').value;
   const fecha  = document.getElementById('fecha').value;
   const obs    = document.getElementById('obs').value.trim();
@@ -1070,11 +1118,10 @@ async function confirmarPedido() {
   if (new Date(fecha+'T12:00:00').getDay()===0) { alert('Los domingos estamos cerrados'); return; }
   if (!franjaSeleccionada) { alert('Selecciona una franja horaria'); return; }
 
-  // Prefijo 34 automático
   if (!tel.startsWith('34')) tel = '34'+tel;
 
-  const carrito = PRODUCTOS.filter(p => cantidades[p.id] > 0)
-    .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precio, cantidad: cantidades[p.id] }));
+  const carrito = PRODUCTOS.filter(function(p){ return cantidades[p.id] > 0; })
+    .map(function(p){ return { id: p.id, nombre: p.nombre, precio: p.precio, cantidad: cantidades[p.id] }; });
   if (!carrito.length) { alert('Añade al menos un producto'); return; }
 
   const btn = document.getElementById('btn-confirmar');
@@ -1084,7 +1131,7 @@ async function confirmarPedido() {
     const res = await fetch('/pedido/'+SLUG+'/confirmar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre, telefono: tel, local, fecha, hora: franjaSeleccionada, observaciones: obs, carrito }),
+      body: JSON.stringify({ nombre: nombre, telefono: tel, local: local, fecha: fecha, hora: franjaSeleccionada, observaciones: obs, carrito: carrito }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -1094,16 +1141,15 @@ async function confirmarPedido() {
     document.getElementById('screen-success').classList.add('active');
     window.scrollTo(0,0);
 
-    // Mensaje WhatsApp con resumen completo — va al cliente
-    const lineasTxt = (data.lineas||[]).map(l => '- '+l.cantidad+'x '+l.nombre+' ('+parseFloat(l.subtotal).toFixed(2)+'€)').join('%0A');
+    const lineasTxt = (data.lineas||[]).map(function(l){ return '- '+l.cantidad+'x '+l.nombre+' ('+parseFloat(l.subtotal).toFixed(2)+'€)'; }).join('%0A');
     const msg = '%E2%9C%85 Pedido %23'+data.numStr+' confirmado en '+encodeURIComponent(data.tenant_nombre)+'%0A%0A'
       +lineasTxt+'%0A%0A'
-      +'%F0%9F%92%B0 Total: '+parseFloat(data.total).toFixed(2)+'%E2%82%AC%0A'
+      +'%F0%9F%92%B0 Total: '+parseFloat(data.total).toFixed(2)+'€%0A'
       +'%F0%9F%93%8D '+encodeURIComponent(data.local_nombre)+'%0A'
       +'%F0%9F%93%85 '+encodeURIComponent(data.fecha_legible)+' - '+encodeURIComponent(data.hora)+'h%0A%0A'
       +'%C2%A1Hasta pronto! %F0%9F%A5%90';
 
-    setTimeout(() => {
+    setTimeout(function() {
       window.location.href = 'https://wa.me/'+tel+'?text='+msg;
     }, 1500);
 
