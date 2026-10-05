@@ -895,6 +895,8 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
 .success .num{font-size:32px;font-weight:800;color:#1FB86A;margin:14px 0;}
 .success p{color:#777;font-size:14px;line-height:1.7;}
 .badge-wa{display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;margin-top:16px;}
+.btn-cal{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#2563eb;border:2px solid #2563eb;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:12px;text-decoration:none;}
+.btn-cal:hover{background:#eff4ff;}
 </style>
 </head>
 <body>
@@ -977,6 +979,11 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
       <div class="num" id="success-num">#0000</div>
       <p>Ahora abre WhatsApp para ver tu confirmación.<br/>¡Te esperamos en <strong>${tenant.nombre}</strong>!</p>
       <div class="badge-wa">📱 Abriendo WhatsApp...</div>
+      <div style="margin-top:20px;">
+        <a id="btn-calendario" class="btn-cal" href="#" download="recogida-pedidone.ics">
+          📅 Añadir al calendario
+        </a>
+      </div>
     </div>
   </div>
 </div>
@@ -1140,6 +1147,42 @@ async function confirmarPedido() {
     document.getElementById('screen-pedido').classList.remove('active');
     document.getElementById('screen-success').classList.add('active');
     window.scrollTo(0,0);
+
+    // Generar archivo .ics para calendario
+    (function() {
+      var franja = franjaSeleccionada; // ej: "10:00-13:00"
+      var horaIni = franja.split('-')[0] || '09:00';
+      var horaFin = franja.split('-')[1] || '10:00';
+      var fechaStr = fecha.replace(/-/g,''); // YYYYMMDD
+      var dtStart = fechaStr + 'T' + horaIni.replace(':','') + '00';
+      var dtEnd   = fechaStr + 'T' + horaFin.replace(':','') + '00';
+      var prodsTxt = carrito.map(function(l){ return l.cantidad+'x '+l.nombre; }).join(', ');
+      var ics = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Pedidone//ES',
+        'BEGIN:VEVENT',
+        'UID:pedidone-'+data.numStr+'-'+Date.now()+'@pedidone.es',
+        'DTSTAMP:'+new Date().toISOString().replace(/[-:.]/g,'').slice(0,15)+'Z',
+        'DTSTART;TZID=Europe/Madrid:'+dtStart,
+        'DTEND;TZID=Europe/Madrid:'+dtEnd,
+        'SUMMARY:Recogida pedido #'+data.numStr+' — '+data.tenant_nombre,
+        'DESCRIPTION:'+prodsTxt+'\nTotal: '+parseFloat(data.total).toFixed(2)+'€',
+        'LOCATION:'+data.local_nombre,
+        'BEGIN:VALARM',
+        'TRIGGER:-PT60M',
+        'ACTION:DISPLAY',
+        'DESCRIPTION:Recordatorio recogida pedido #'+data.numStr,
+        'END:VALARM',
+        'END:VEVENT',
+        'END:VCALENDAR'
+      ].join('\r\n');
+      var blob = new Blob([ics], {type:'text/calendar;charset=utf-8'});
+      var url  = URL.createObjectURL(blob);
+      var btn  = document.getElementById('btn-calendario');
+      btn.href = url;
+      btn.download = 'recogida-pedido-'+data.numStr+'.ics';
+    })();
 
     const lineasTxt = (data.lineas||[]).map(function(l){ return '- '+l.cantidad+'x '+l.nombre+' ('+parseFloat(l.subtotal).toFixed(2)+'€)'; }).join('%0A');
     const msg = '%E2%9C%85 Pedido %23'+data.numStr+' confirmado en '+encodeURIComponent(data.tenant_nombre)+'%0A%0A'
