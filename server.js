@@ -974,7 +974,7 @@ PRODS.forEach(function(p) {
   var nom = document.createElement('div'); nom.className = 'prod-nom'; nom.textContent = p.nombre;
   info.appendChild(nom);
   if (p.descripcion) { var d = document.createElement('div'); d.className = 'prod-desc'; d.textContent = p.descripcion; info.appendChild(d); }
-  var pr = document.createElement('div'); pr.className = 'prod-prec'; pr.textContent = p.precio.toFixed(2).replace('.',',')+'&#8364;';
+  var pr = document.createElement('div'); pr.className = 'prod-prec'; pr.textContent = p.precio.toFixed(2).replace('.',',')+String.fromCharCode(8364);
   info.appendChild(pr); row.appendChild(info);
   var st = document.createElement('div'); st.className = 'stepper';
   var bm = document.createElement('button'); bm.innerHTML = '&#8722;';
@@ -1019,11 +1019,11 @@ document.getElementById('fecha').addEventListener('change', function() {
   fs.forEach(function(f) {
     var b = document.createElement('button');
     b.type = 'button'; b.className = 'fbtn'; b.textContent = f+'h';
-    b.addEventListener('click', function() {
-      franjaSel = f;
-      document.querySelectorAll('.fbtn').forEach(function(x){ x.classList.remove('sel'); });
-      b.classList.add('sel');
-    });
+    b.addEventListener('click', (function(btn, franja) { return function() {
+      franjaSel = franja;
+      fc.querySelectorAll('.fbtn').forEach(function(x){ x.classList.remove('sel'); });
+      btn.classList.add('sel');
+    }; })(b, f));
     fc.appendChild(b);
   });
 });
