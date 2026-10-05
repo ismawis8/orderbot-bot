@@ -450,7 +450,13 @@ async function guardarPedido(telefono, tenant, s) {
         `Te esperamos el *${formatFecha(s.fecha)}*\n` +
         `🕐 Franja: *${s.franjaTextoVal}h*\n` +
         `📍 en *${s.localNombre}*\n\n` +
-        `¡Gracias y hasta pronto! 🥐`);
+        `¡Gracias y hasta pronto! 🥐\n\n` +
+        `📅 Añadir al calendario:\n` +
+        `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+        `&text=${encodeURIComponent('Recogida pedido #'+numStr+' - '+tenant.nombre)}` +
+        `&dates=${s.fecha.replace(/-/g,'')}T${s.franjaTextoVal.split('-')[0].replace(':','')}00/${s.fecha.replace(/-/g,'')}T${s.franjaTextoVal.split('-')[1].replace(':','')}00` +
+        `&details=${encodeURIComponent(s.carrito.map(l=>l.cantidad+'x '+l.nombre).join(', '))}` +
+        `&location=${encodeURIComponent(s.localNombre)}`);
     }
 
     // Notificación a la tienda
