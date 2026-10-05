@@ -835,9 +835,18 @@ function generarWebPedido(tenant, productos, locales) {
     precio: p.precio, imagen_url: p.imagen_url || '',
   })));
   const localesData = JSON.stringify(locales.map(l => ({ id: l.id, nombre: l.nombre })));
-  const tenantNombre = tenant.nombre.replace(/'/g, "\\'");
 
-  const css = `
+  const localesSel = locales.length > 1
+    ? `<div class="field"><label>Local *</label><select id="local">${locales.map(l => `<option value="${l.id}">${l.nombre}</option>`).join('')}</select></div>`
+    : `<input type="hidden" id="local" value="${locales[0]?.id || ''}"/>`;
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Pedido &#8212; ${tenant.nombre}</title>
+<style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-height:100vh;padding-bottom:100px}
 .header{background:#0f172a;color:#fff;padding:14px 20px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}
@@ -885,19 +894,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
 .success p{color:#777;font-size:14px;line-height:1.7}
 .bwa{display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;margin-top:16px}
 .bcal{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#2563eb;border:2px solid #2563eb;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:12px;text-decoration:none}
-`;
-
-  const localesSel = locales.length > 1
-    ? `<div class="field"><label>Local *</label><select id="local">${locales.map(l => `<option value="${l.id}">${l.nombre}</option>`).join('')}</select></div>`
-    : `<input type="hidden" id="local" value="${locales[0]?.id || ''}"/>`;
-
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Pedido — ${tenant.nombre}</title>
-<style>${css}</style>
+</style>
 </head>
 <body>
 <div class="header">
@@ -911,38 +908,38 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f4f4f6;min-heigh
 
 <div id="sp" class="screen active">
   <div class="content">
-    <div class="section"><div class="stitle">🛒 Selecciona tus productos</div><div id="pl"></div></div>
+    <div class="section"><div class="stitle">Selecciona tus productos</div><div id="pl"></div></div>
     <div class="section">
-      <div class="stitle">👤 Tus datos</div>
+      <div class="stitle">Tus datos</div>
       <div class="field"><label>Nombre completo *</label><input id="nombre" type="text" placeholder="Tu nombre" autocomplete="name"/></div>
-      <div class="field"><label>Teléfono * <span style="font-weight:400;text-transform:none;letter-spacing:0">(sin prefijo, ej: 612345678)</span></label><input id="tel" type="tel" placeholder="612345678" maxlength="9"/></div>
+      <div class="field"><label>Telefono * (sin prefijo, ej: 612345678)</label><input id="tel" type="tel" placeholder="612345678" maxlength="9"/></div>
     </div>
     <div class="section">
-      <div class="stitle">📅 Recogida</div>
+      <div class="stitle">Recogida</div>
       ${localesSel}
       <div class="field">
-        <label>Día *</label>
+        <label>Dia *</label>
         <input id="fecha" type="date"/>
         <div class="ferr" id="ferr">Los domingos estamos cerrados.</div>
       </div>
-      <div class="field"><label>Franja horaria *</label><div class="franjas" id="fc"><p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p></div></div>
-      <div class="field"><label>Observaciones <span style="font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label><textarea id="obs" placeholder="Alergias, instrucciones..."></textarea></div>
+      <div class="field"><label>Franja horaria *</label><div class="franjas" id="fc"><p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un dia</p></div></div>
+      <div class="field"><label>Observaciones (opcional)</label><textarea id="obs" placeholder="Alergias, instrucciones..."></textarea></div>
     </div>
   </div>
   <div class="cbar"><div class="cinner">
-    <div><div class="ctotal" id="ctotal">0,00€</div><div class="citems" id="citems">Sin productos</div></div>
-    <button class="bcf" id="bcf" disabled>Confirmar →</button>
+    <div><div class="ctotal" id="ctotal">0,00&#8364;</div><div class="citems" id="citems">Sin productos</div></div>
+    <button class="bcf" id="bcf" disabled>Confirmar &#8594;</button>
   </div></div>
 </div>
 
 <div id="ss" class="screen">
   <div class="content"><div class="success">
-    <div class="sicon">🎉</div>
-    <h2>¡Pedido confirmado!</h2>
+    <div class="sicon">&#127881;</div>
+    <h2>Pedido confirmado!</h2>
     <div class="snum" id="snum">#0000</div>
-    <p>Te hemos enviado la confirmación<br/>por WhatsApp. ¡Te esperamos en <strong>${tenant.nombre}</strong>!</p>
-    <div class="bwa">📱 Abriendo WhatsApp...</div>
-    <div style="margin-top:20px"><a id="bcal" class="bcal" href="#">📅 Añadir al calendario</a></div>
+    <p>Te hemos enviado la confirmacion<br/>por WhatsApp. Te esperamos en <strong>${tenant.nombre}</strong>!</p>
+    <div class="bwa">Abriendo WhatsApp...</div>
+    <div style="margin-top:20px"><a id="bcal" class="bcal" href="#">&#128197; Anadir al calendario</a></div>
   </div></div>
 </div>
 
@@ -954,10 +951,8 @@ var cant  = {};
 var franjaSel = '';
 var carritoFinal = [];
 
-// Fecha mínima hoy
 document.getElementById('fecha').min = new Date().toISOString().split('T')[0];
 
-// Render productos
 var pl = document.getElementById('pl');
 PRODS.forEach(function(p) {
   cant[p.id] = 0;
@@ -966,21 +961,23 @@ PRODS.forEach(function(p) {
   if (p.imagen_url) {
     var img = document.createElement('img');
     img.className = 'prod-img'; img.src = p.imagen_url; img.alt = p.nombre;
-    var ph = document.createElement('div'); ph.className = 'prod-ph'; ph.textContent = '📦'; ph.style.display='none';
+    var ph = document.createElement('div'); ph.className = 'prod-ph';
+    ph.innerHTML = '&#128230;'; ph.style.display='none';
     img.onerror = function(){ img.style.display='none'; ph.style.display='flex'; };
     row.appendChild(img); row.appendChild(ph);
   } else {
-    var ph2 = document.createElement('div'); ph2.className = 'prod-ph'; ph2.textContent = '📦';
+    var ph2 = document.createElement('div'); ph2.className = 'prod-ph';
+    ph2.innerHTML = '&#128230;';
     row.appendChild(ph2);
   }
   var info = document.createElement('div'); info.className = 'prod-info';
   var nom = document.createElement('div'); nom.className = 'prod-nom'; nom.textContent = p.nombre;
   info.appendChild(nom);
   if (p.descripcion) { var d = document.createElement('div'); d.className = 'prod-desc'; d.textContent = p.descripcion; info.appendChild(d); }
-  var pr = document.createElement('div'); pr.className = 'prod-prec'; pr.textContent = p.precio.toFixed(2).replace('.',',')+'\u20ac';
+  var pr = document.createElement('div'); pr.className = 'prod-prec'; pr.textContent = p.precio.toFixed(2).replace('.',',')+'&#8364;';
   info.appendChild(pr); row.appendChild(info);
   var st = document.createElement('div'); st.className = 'stepper';
-  var bm = document.createElement('button'); bm.textContent = '\u2212';
+  var bm = document.createElement('button'); bm.innerHTML = '&#8722;';
   bm.addEventListener('click', (function(id){ return function(){ chg(id,-1); }; })(p.id));
   var qty = document.createElement('span'); qty.id = 'q'+p.id; qty.textContent = '0';
   var bp = document.createElement('button'); bp.className = 'plus'; bp.textContent = '+';
@@ -999,7 +996,7 @@ function chg(id, d) {
 function upd() {
   var tot=0, n=0;
   PRODS.forEach(function(p){ tot+=p.precio*(cant[p.id]||0); n+=cant[p.id]||0; });
-  document.getElementById('ctotal').textContent = tot.toFixed(2).replace('.',',')+'\u20ac';
+  document.getElementById('ctotal').textContent = tot.toFixed(2).replace('.',',')+String.fromCharCode(8364);
   document.getElementById('citems').textContent = n===0?'Sin productos':n+' unidad'+(n===1?'':'es');
   document.getElementById('bcf').disabled = n===0;
 }
@@ -1009,11 +1006,11 @@ document.getElementById('fecha').addEventListener('change', function() {
   var ferr = document.getElementById('ferr');
   franjaSel = '';
   var fc = document.getElementById('fc');
-  if (!v) { fc.innerHTML = '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p>'; return; }
+  if (!v) { fc.innerHTML = '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un dia</p>'; return; }
   var dow = new Date(v+'T12:00:00').getDay();
   if (dow === 0) {
     ferr.style.display='block'; this.value='';
-    fc.innerHTML = '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un día</p>';
+    fc.innerHTML = '<p style="color:#ccc;font-size:13px;grid-column:span 2">Selecciona primero un dia</p>';
     return;
   }
   ferr.style.display='none';
@@ -1038,14 +1035,14 @@ document.getElementById('bcf').addEventListener('click', function() {
   var fecha  = document.getElementById('fecha').value;
   var obs    = document.getElementById('obs').value.trim();
   if (!nombre)  { alert('Introduce tu nombre'); return; }
-  if (!tel||tel.length<9) { alert('Introduce un teléfono válido (9 dígitos)'); return; }
-  if (!fecha)   { alert('Selecciona el día de recogida'); return; }
+  if (!tel||tel.length<9) { alert('Introduce un telefono valido (9 digitos)'); return; }
+  if (!fecha)   { alert('Selecciona el dia de recogida'); return; }
   if (new Date(fecha+'T12:00:00').getDay()===0) { alert('Los domingos estamos cerrados'); return; }
   if (!franjaSel) { alert('Selecciona una franja horaria'); return; }
   if (!tel.startsWith('34')) tel = '34'+tel;
   carritoFinal = PRODS.filter(function(p){ return cant[p.id]>0; })
     .map(function(p){ return {id:p.id,nombre:p.nombre,precio:p.precio,cantidad:cant[p.id]}; });
-  if (!carritoFinal.length) { alert('Añade al menos un producto'); return; }
+  if (!carritoFinal.length) { alert('Annade al menos un producto'); return; }
   var btn = document.getElementById('bcf');
   btn.disabled=true; btn.textContent='Enviando...';
   fetch('/pedido/'+SLUG+'/confirmar',{
@@ -1060,42 +1057,43 @@ document.getElementById('bcf').addEventListener('click', function() {
     document.getElementById('sp').classList.remove('active');
     document.getElementById('ss').classList.add('active');
     window.scrollTo(0,0);
-    // Generar ICS
     var hIni=(franjaSel.split('-')[0]||'09:00').replace(':','')+'00';
     var hFin=(franjaSel.split('-')[1]||'10:00').replace(':','')+'00';
     var fd=fecha.replace(/-/g,'');
     var prods=carritoFinal.map(function(l){return l.cantidad+'x '+l.nombre;}).join(', ');
-    var ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Pedidone//ES\r\nBEGIN:VEVENT\r\n'
-      +'UID:pedidone-'+data.numStr+'-'+Date.now()+'@pedidone.es\r\n'
-      +'DTSTAMP:'+new Date().toISOString().replace(/[-:.]/g,'').slice(0,15)+'Z\r\n'
-      +'DTSTART;TZID=Europe/Madrid:'+fd+'T'+hIni+'\r\n'
-      +'DTEND;TZID=Europe/Madrid:'+fd+'T'+hFin+'\r\n'
-      +'SUMMARY:Recogida pedido #'+data.numStr+' \u2014 '+data.tenant_nombre+'\r\n'
-      +'DESCRIPTION:'+prods+'\\nTotal: '+parseFloat(data.total).toFixed(2)+'\u20ac\r\n'
-      +'LOCATION:'+data.local_nombre+'\r\n'
-      +'BEGIN:VALARM\r\nTRIGGER:-PT60M\r\nACTION:DISPLAY\r\nDESCRIPTION:Recordatorio recogida #'+data.numStr+'\r\nEND:VALARM\r\n'
-      +'END:VEVENT\r\nEND:VCALENDAR';
+    var icsLines=[
+      'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Pedidone//ES','BEGIN:VEVENT',
+      'UID:pedidone-'+data.numStr+'-'+Date.now()+'@pedidone.es',
+      'DTSTAMP:'+new Date().toISOString().replace(/[-:.]/g,'').slice(0,15)+'Z',
+      'DTSTART;TZID=Europe/Madrid:'+fd+'T'+hIni,
+      'DTEND;TZID=Europe/Madrid:'+fd+'T'+hFin,
+      'SUMMARY:Recogida pedido #'+data.numStr+' - '+data.tenant_nombre,
+      'DESCRIPTION:'+prods,
+      'LOCATION:'+data.local_nombre,
+      'BEGIN:VALARM','TRIGGER:-PT60M','ACTION:DISPLAY',
+      'DESCRIPTION:Recordatorio recogida #'+data.numStr,
+      'END:VALARM','END:VEVENT','END:VCALENDAR'
+    ];
+    var ics=icsLines.join(String.fromCharCode(13,10));
     var blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
     var cal=document.getElementById('bcal');
     cal.href=URL.createObjectURL(blob);
     cal.download='pedido-'+data.numStr+'.ics';
-    // WhatsApp al cliente
-    var lt=(data.lineas||[]).map(function(l){return '-'+l.cantidad+'x '+l.nombre+' ('+parseFloat(l.subtotal).toFixed(2)+'\u20ac)';}).join('%0A');
-    var msg='%E2%9C%85 Pedido %23'+data.numStr+' confirmado en '+encodeURIComponent(data.tenant_nombre)+'%0A%0A'
+    var lt=(data.lineas||[]).map(function(l){return '-'+l.cantidad+'x '+l.nombre+' ('+parseFloat(l.subtotal).toFixed(2)+'EUR)';}).join('%0A');
+    var msg='Pedido+%23'+data.numStr+'+confirmado+en+'+encodeURIComponent(data.tenant_nombre)+'%0A%0A'
       +lt+'%0A%0A'
-      +'%F0%9F%92%B0 Total: '+parseFloat(data.total).toFixed(2)+'\u20ac%0A'
-      +'%F0%9F%93%8D '+encodeURIComponent(data.local_nombre)+'%0A'
-      +'%F0%9F%93%85 '+encodeURIComponent(data.fecha_legible)+' - '+encodeURIComponent(data.hora)+'h%0A%0A'
-      +'%C2%A1Hasta pronto! %F0%9F%A5%90';
+      +'Total%3A+'+parseFloat(data.total).toFixed(2)+'EUR%0A'
+      +encodeURIComponent(data.local_nombre)+'%0A'
+      +encodeURIComponent(data.fecha_legible)+'+'+encodeURIComponent(data.hora)+'h%0A%0A'
+      +'Hasta+pronto!';
     setTimeout(function(){ window.location.href='https://wa.me/'+tel+'?text='+msg; },1500);
   }).catch(function(err){
     alert('Error: '+err.message);
     var btn=document.getElementById('bcf');
-    btn.disabled=false; btn.textContent='Confirmar \u2192';
+    btn.disabled=false; btn.textContent='Confirmar';
   });
 });
 </script>
 </body>
 </html>`;
-  return html;
 }
